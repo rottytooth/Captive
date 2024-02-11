@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 import os
 import re
+import numpy as np
 
 class lexer:
 
@@ -113,21 +114,22 @@ class interpreter:
     def __init__(self):
         self.lexer = lexer()
 
-    def parse(self, nodes):
+    def parse(self, nodes, verbose=False):
+        # FIXME: passing verbose all over the place is ridiculous. This should use standard logging
         idx = 0
         stack = []
         cmd_stack = []
 
-        retset = self.parse_nodes(nodes, idx, stack, cmd_stack)
+        retset = self.parse_nodes(nodes, idx, stack, cmd_stack, verbose=verbose)
         return retset[3], stack
 
-    def parse_nodes(self, nodes, idx, stack, cmd_stack, output = ""):
+    def parse_nodes(self, nodes, idx, stack, cmd_stack, output = "", verbose=False):
 
         # where we came in (in case this is a while loop)
         starting_idx = idx
 
         # tracking for the simplest infinite loop
-        while_value = None
+        stack_cache = []
 
         while idx < len(nodes):
 
@@ -147,14 +149,22 @@ class interpreter:
                 if len(cmd_stack) > 0 and cmd_stack[-1] == "while":
 
                     # infinite loop handling
-                    if while_value == None:
-                        while_value = stack
-                    elif stack == while_value:
-                        # if the stack is in exactly the same state as the previous time we hit this while, we consider it an infinite loop and exit
+                    if len(stack_cache) == 0:
+                        stack_cache.append(stack)
+                    elif stack in stack_cache:
+                        # if the stack is in exactly the same state as a previous iteration, we consider it an infinite loop and exit
                         cmd_stack.pop()
                         return idx, stack, cmd_stack, output
                     else:
-                        while_value = stack
+                        if verbose:
+                            # show the comparison between the two
+                            for old_stack in stack_cache:
+                                if len(old_stack) != len(stack):
+                                    print(f"cached stack len: {len(old_stack)}, curr stack length: {len(stack)}")
+                                else:
+                                    #FIXME: rework to avoid this conversion
+                                    print(np.subtract(np.asarray(old_stack), np.asarray(stack)))
+                        stack_cache.append(stack)
 
                     # actual testing of the while condition
                     # if there's nothing in the stack, we also return
@@ -210,7 +220,8 @@ class interpreter:
                     den = stack.pop()
                     if den == 0:
                         stack.append(0)
-                    stack.append(num / den)
+                    else:
+                        stack.append(num / den)
             elif n == "gt":
                 if len(stack) > 1:
                     stack.append(int(stack.pop() > stack.pop()))
@@ -220,7 +231,7 @@ class interpreter:
             elif n == "while":
                 if stack[-1] > 0:
                     cmd_stack.append("while")
-                    idx, stack, cmd_stack, output = self.parse_nodes(nodes, idx + 1, stack, cmd_stack, output=output)
+                    idx, stack, cmd_stack, output = self.parse_nodes(nodes, idx + 1, stack, cmd_stack, output=output, verbose=verbose)
                 else:
                     cmd_stack.append("skip")
 
@@ -247,7 +258,7 @@ class interpreter:
             with open(codefile, "x", encoding="utf-8") as o:
                 o.write('\n'.join(str(x) for x in lexnodes))
 
-        output, stack = self.parse(lexnodes)
+        output, stack = self.parse(lexnodes, verbose=verbose)
 
         if outfile:
             if (os.path.isfile(outfile)):
@@ -283,7 +294,7 @@ if __name__ == "__main__":
 
     intr = interpreter()
     result = intr.interpret_file(args.progfile, args.inclex, args.outfile, 
-                                 args.verbose)
+                                 args.incstack, args.verbose)
 
     if not args.outfile or args.verbose:
         print(result)
