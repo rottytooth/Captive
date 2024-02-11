@@ -1,21 +1,13 @@
+from argparse import ArgumentParser
 import os
 import re
-
-# to run locally:
-INFILE = "moby_dick_s1.txt"
-CODEFILE = "moby_dick_s1_code.txt"
-OUTFILE = "moby_dick_s1_out.txt"
-
-
-# Settings (if the value has not changed in this many iterations, exit loop)
-INFINITE_LOOP_COUNT = 150
 
 class lexer:
 
     COMMANDS = {
         "l": "push",
         "p": {
-            "p": "pop",
+            "k": "pop",
             "h": "not",
             "t": "if",
             "d": "end"
@@ -94,7 +86,7 @@ class lexer:
                     idx += 1
                     first = None
 
-                    if cmd == "rot":
+                    if cmd == "rot" or cmd == "pop":
                         number, idx = self.lex_number(command_text, idx+1)
                         program.append(number)
                     continue
@@ -127,7 +119,7 @@ class interpreter:
         cmd_stack = []
 
         retset = self.parse_nodes(nodes, idx, stack, cmd_stack)
-        return retset[3]
+        return retset[3], stack
 
     def parse_nodes(self, nodes, idx, stack, cmd_stack, output = ""):
 
@@ -135,7 +127,6 @@ class interpreter:
         starting_idx = idx
 
         # tracking for the simplest infinite loop
-        while_count = 0
         while_value = None
 
         while idx < len(nodes):
@@ -154,17 +145,19 @@ class interpreter:
                     cmd_stack.pop()
                 # for while, we have to test the top item
                 if len(cmd_stack) > 0 and cmd_stack[-1] == "while":
-                    if while_value == None:
-                        while_value = stack[-1]
-                    elif stack[-1] == while_value:
-                        while_count += 1
-                        if while_count > INFINITE_LOOP_COUNT:
-                            cmd_stack.pop()
-                            return idx, stack, cmd_stack, output
-                    else:
-                        while_count = 0
-                        while_value = stack[-1]
 
+                    # infinite loop handling
+                    if while_value == None:
+                        while_value = stack
+                    elif stack == while_value:
+                        # if the stack is in exactly the same state as the previous time we hit this while, we consider it an infinite loop and exit
+                        cmd_stack.pop()
+                        return idx, stack, cmd_stack, output
+                    else:
+                        while_value = stack
+
+                    # actual testing of the while condition
+                    # if there's nothing in the stack, we also return
                     if len(stack) == 0 or stack[-1] <= 0:
                         cmd_stack.pop()
                         return idx, stack, cmd_stack, output
@@ -181,8 +174,10 @@ class interpreter:
                         stack = stack[modded_size:] + stack[:modded_size]
                     idx += 1
             elif n == "pop":
-                if len(stack) > 0:
-                    stack.pop()
+                if idx + 1 < len(nodes) and isinstance(nodes[idx+1], int) and len(stack) > 0:
+                    topop = nodes[idx+1] % len(stack)
+                    stack.pop(topop)
+                    idx += 1
             elif n == "dup":
                 if len(stack) > 0:
                     stack.append(stack[-1])
@@ -198,7 +193,7 @@ class interpreter:
                     cmd_stack.append("skip")
             elif n == "emit":
                 if len(stack) > 0:
-                    output += chr(stack[-1])
+                    output += chr(round(stack[-1])) # to print, we round to closest int
                     stack.pop()
             elif n == "sub":
                 if len(stack) > 1:
@@ -233,7 +228,7 @@ class interpreter:
 
         return idx, stack, cmd_stack, output
 
-    def interpret_file(self, file_loc, codefile=None, outfile=None):
+    def interpret_file(self, file_loc, codefile=None, outfile=None, includestack=False, verbose=False):
 
         if not os.path.exists("out"):       
             os.makedirs("out") 
@@ -242,7 +237,8 @@ class interpreter:
             content = file.read()
 
         lexnodes = self.lexer.lex(content)
-        print(lexnodes)
+        if verbose:
+            print(lexnodes)
 
         if codefile:
             if (os.path.isfile(codefile)):
@@ -251,7 +247,7 @@ class interpreter:
             with open(codefile, "x", encoding="utf-8") as o:
                 o.write('\n'.join(str(x) for x in lexnodes))
 
-        output = self.parse(lexnodes)
+        output, stack = self.parse(lexnodes)
 
         if outfile:
             if (os.path.isfile(outfile)):
@@ -260,14 +256,34 @@ class interpreter:
             with open(outfile, "x", encoding="utf-8") as o:
                 o.write(output)
 
+                if includestack:
+                    o.write("\n\nSTACK CONTENTS:")
+                    o.write(str(stack))
+
         return output
 
 
 
 if __name__ == "__main__":
 
+    parser = ArgumentParser(description='Captive Interpreter 0.1', 
+                            epilog='More at https://danieltemkin.com/Esolangs/Captive')
+
+    parser.add_argument('progfile', metavar='progfile', type=str, 
+                        help='Captive program file')
+    parser.add_argument('--out', dest='outfile', default=None, 
+                        help='where to write output from the program')
+    parser.add_argument('--ps', dest='inclex', default=False, 
+                        help='where to write the program transpiled to stack pseudocode')
+    parser.add_argument('-s', dest='incstack', action='store_true', 
+                        default=False, help='include final state of stack in output')
+    parser.add_argument('-v', dest='verbose', action='store_true', 
+                        default=False, help='verbose logging')
+    args = parser.parse_args()
+
     intr = interpreter()
+    result = intr.interpret_file(args.progfile, args.inclex, args.outfile, 
+                                 args.verbose)
 
-    result = intr.interpret_file(INFILE, codefile="out/" + CODEFILE, outfile="out/" + OUTFILE)
-
-    print(result)
+    if not args.outfile or args.verbose:
+        print(result)
