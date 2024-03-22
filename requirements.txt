@@ -1,1 +1,4 @@
+beautifulsoup4==4.12.3
+bs4==0.0.2
 numpy==1.26.4
+soupsieve==2.5

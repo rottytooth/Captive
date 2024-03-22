@@ -2,3 +2,5 @@ out
 .vscode
 .cap_env
 genesis_1.txt
+data
+.DS_Store

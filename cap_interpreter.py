@@ -11,17 +11,16 @@ class lexer:
             "k": "pop",
             "h": "not",
             "t": "if",
-            "d": "end"
+            "d": "end",
+            "p": "rot"
         },
-        "t": {
-            "t": "emit",
-            "h": "rot"
-        },
+        "t": "emit",
         "f": "sub",
         "b": "mul",
         "d": {
             "d": "add",
-            "g": "gt"
+            "g": "gt",
+            "p": "rot"
         },
         "k": "div",
         "q": "mod",
@@ -123,13 +122,9 @@ class interpreter:
         retset = self.parse_nodes(nodes, idx, stack, cmd_stack, verbose=verbose)
         return retset[3], stack
 
-    def parse_nodes(self, nodes, idx, stack, cmd_stack, output = "", verbose=False):
+    def parse_nodes(self, nodes, idx, stack, cmd_stack, output = "", verbose=False,stack_cache=[]):
 
-        # where we came in (in case this is a while loop)
         starting_idx = idx
-
-        # tracking for the simplest infinite loop
-        stack_cache = []
 
         while idx < len(nodes):
 
@@ -148,10 +143,7 @@ class interpreter:
                 # for while, we have to test the top item
                 if len(cmd_stack) > 0 and cmd_stack[-1] == "while":
 
-                    # infinite loop handling
-                    if len(stack_cache) == 0:
-                        stack_cache.append(stack)
-                    elif stack in stack_cache:
+                    if stack in stack_cache:
                         # if the stack is in exactly the same state as a previous iteration, we consider it an infinite loop and exit
                         cmd_stack.pop()
                         return idx, stack, cmd_stack, output
@@ -164,7 +156,7 @@ class interpreter:
                                 else:
                                     #FIXME: rework to avoid this conversion
                                     print(np.subtract(np.asarray(old_stack), np.asarray(stack)))
-                        stack_cache.append(stack)
+                        stack_cache.append(stack.copy())
 
                     # actual testing of the while condition
                     # if there's nothing in the stack, we also return
@@ -172,7 +164,7 @@ class interpreter:
                         cmd_stack.pop()
                         return idx, stack, cmd_stack, output
                     else:
-                        idx = starting_idx
+                        idx = starting_idx - 1
             elif n == "push":
                 if idx + 1 < len(nodes) and isinstance(nodes[idx+1], int):
                     stack.append(nodes[idx+1])
@@ -203,7 +195,7 @@ class interpreter:
                     cmd_stack.append("skip")
             elif n == "emit":
                 if len(stack) > 0:
-                    output += chr(round(stack[-1])) # to print, we round to closest int
+                    output += chr(abs(round(stack[-1]))) # to print, we round to closest int
                     stack.pop()
             elif n == "sub":
                 if len(stack) > 1:
@@ -231,7 +223,12 @@ class interpreter:
             elif n == "while":
                 if stack[-1] > 0:
                     cmd_stack.append("while")
-                    idx, stack, cmd_stack, output = self.parse_nodes(nodes, idx + 1, stack, cmd_stack, output=output, verbose=verbose)
+
+                    # infinite loop handling
+                    stack_cache.clear()
+                    stack_cache.append(stack.copy())
+
+                    idx, stack, cmd_stack, output = self.parse_nodes(nodes, idx + 1, stack, cmd_stack, output=output, verbose=verbose, stack_cache=stack_cache)
                 else:
                     cmd_stack.append("skip")
 
@@ -241,7 +238,7 @@ class interpreter:
 
     def interpret_file(self, file_loc, codefile=None, outfile=None, includestack=False, verbose=False):
 
-        if not os.path.exists("out"):       
+        if outfile and not os.path.exists("out"):       
             os.makedirs("out") 
 
         with open(file_loc, "r", encoding="utf-8") as file:
