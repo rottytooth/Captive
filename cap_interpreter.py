@@ -21,6 +21,7 @@ class lexer:
             "d": "add",
             "g": "gt",
             "p": "rot"
+            # "k": "exec"
         },
         "k": "div",
         "q": "mod",
@@ -44,6 +45,8 @@ class lexer:
         "t": 1,
         "y": "end"
     }
+
+    MAX_CHR = 1114112 # max unicode chr() can handle
 
     def lex_number(self, input_txt, idx):
         subtract = False
@@ -156,6 +159,8 @@ class interpreter:
                                 else:
                                     #FIXME: rework to avoid this conversion
                                     print(np.subtract(np.asarray(old_stack), np.asarray(stack)))
+                        if len(stack_cache)> 50 * 1000: # avoid memory error by resetting ache regularly
+                            stack_cache = [stack_cache[-1]]
                         stack_cache.append(stack.copy())
 
                     # actual testing of the while condition
@@ -184,10 +189,11 @@ class interpreter:
                 if len(stack) > 0:
                     stack.append(stack[-1])
             elif n == "not":
-                if stack[-1] == 0:
-                    stack[-1] == 1
-                else:
-                    stack[-1] = 0 - stack[-1]
+                if len(stack) > 0:
+                    if stack[-1] == 0:
+                        stack[-1] == 1
+                    else:
+                        stack[-1] = 0 - stack[-1]
             elif n == "if":
                 if stack[-1] > 0:
                     cmd_stack.append("if")
@@ -195,7 +201,10 @@ class interpreter:
                     cmd_stack.append("skip")
             elif n == "emit":
                 if len(stack) > 0:
-                    output += chr(abs(round(stack[-1]))) # to print, we round to closest int
+                    ch = abs(round(stack[-1])) # to print, we round to closest int
+                    if (ch > lexer.MAX_CHR): # mod by the max unicode chr() can handle
+                        ch = ch % lexer.MAX_CHR
+                    output += chr(ch)
                     stack.pop()
             elif n == "sub":
                 if len(stack) > 1:

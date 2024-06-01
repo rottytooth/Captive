@@ -1,12 +1,5 @@
-l
-ddqpty 
-h 
-l
-blbty
-dd
-h
-l
-bpblbty
-dd
+ldghpty
+ldghly
+ldglttty
 gty
 
