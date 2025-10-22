@@ -111,18 +111,31 @@ class AdvancedSpecialLetterGenerator:
             # Noun phrases
             'NP': [
                 ['NN'],                    # Simple noun
+                ['NNS'],                   # Plural noun
                 ['DT', 'NN'],              # Determiner + noun (the cat)
+                ['DT', 'NNS'],             # Determiner + plural noun (the cats)
                 ['JJ', 'NN'],              # Adjective + noun (big cat)
+                ['JJ', 'NNS'],             # Adjective + plural noun (big cats)
                 ['DT', 'JJ', 'NN'],        # Det + Adj + noun (the big cat)
+                ['DT', 'JJ', 'NNS'],       # Det + Adj + plural noun (the big cats)
+                ['DT', 'JJ', ',', 'JJ', 'NN'],    # Det + Adj, Adj + noun (the big, brown cat)
+                ['DT', 'JJ', ',', 'JJ', 'NNS'],   # Det + Adj, Adj + plural (the big, brown cats)
+                ['JJ', ',', 'JJ', 'NN'],          # Adj, Adj + noun (big, brown cat)
+                ['JJ', ',', 'JJ', 'NNS'],         # Adj, Adj + plural (big, brown cats)
                 ['DT', 'ADJP', 'NN'],      # Det + Adj phrase + noun (the very big cat)
+                ['DT', 'ADJP', 'NNS'],     # Det + Adj phrase + plural noun (the very big cats)
                 ['PRP'],                   # Pronoun (he, she, it)
             ],
             # Verb phrases
             'VP': [
-                ['VBZ'],                   # Simple verb (runs)
+                ['VBZ'],                   # Simple verb (runs) - singular
+                ['VBP'],                   # Simple verb (run) - plural
                 ['VBZ', 'ADVP'],           # Verb + Adverb phrase (runs fast)
+                ['VBP', 'ADVP'],           # Verb + Adverb phrase (run fast)
                 ['VBZ', 'NP'],             # Verb + Object (sees cat)
+                ['VBP', 'NP'],             # Verb + Object (see cat)
                 ['VBZ', 'ADJP'],           # Verb (is) + Adjective phrase (is big)
+                ['VBP', 'ADJP'],           # Verb (are) + Adjective phrase (are big)
                 ['VB'],                    # Base verb (run)
                 ['VB', 'NP'],              # Base verb + Object (see cat)
             ],
@@ -290,10 +303,13 @@ class AdvancedSpecialLetterGenerator:
         if desired_pos in pos_dict:
             return pos_dict[desired_pos]
         
-        # Try related POS tags
+        # Try related POS tags with preference order
         related_pos = {
             'NN': ['NNS', 'NNP', 'NNPS'],
+            'NNS': ['NN', 'NNP', 'NNPS'],
             'VB': ['VBD', 'VBG', 'VBN', 'VBP', 'VBZ'],
+            'VBZ': ['VBP', 'VB', 'VBD', 'VBG', 'VBN'],
+            'VBP': ['VBZ', 'VB', 'VBD', 'VBG', 'VBN'],
             'JJ': ['JJR', 'JJS'],
             'RB': ['RBR', 'RBS'],
         }
@@ -496,6 +512,13 @@ class AdvancedSpecialLetterGenerator:
         words = []
         
         for i, (pattern, pos) in enumerate(zip(assignment, rule)):
+            # Handle comma as literal punctuation
+            if pos == ',':
+                # Attach comma to previous word without space
+                if words:
+                    words[-1] += ','
+                continue
+                
             if pattern:  # Has special letters
                 word_options = self._get_words_for_pattern_and_pos(pattern, pos)
                 if word_options:
@@ -552,9 +575,9 @@ class AdvancedSpecialLetterGenerator:
         # Get frequencies for all words (default to 1 if not in corpus)
         weights = [self.word_freq.get(word, 1) for word in words]
         
-        # Apply exponential weighting to strongly favor common words
-        # Square the weights to make the difference more dramatic
-        weights = [w ** 1.5 for w in weights]
+        # Apply exponential weighting to STRONGLY favor common words
+        # Use power of 2.0 to make the difference even more dramatic
+        weights = [w ** 2.0 for w in weights]
         
         # Use random.choices with weights (requires Python 3.6+)
         return random.choices(words, weights=weights, k=1)[0]
