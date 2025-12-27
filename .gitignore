@@ -4,3 +4,5 @@ out
 genesis_1.txt
 data
 .DS_Store
+set_api_key.sh
+__pycache__

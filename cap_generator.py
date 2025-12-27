@@ -15,6 +15,8 @@ class AdvancedSpecialLetterGenerator:
     CHUNK_RANDOMNESS = 0.8  # Randomness factor for chunk size variation (±20% at 0.8)
     MAX_WORDS_PER_SENTENCE = 15  # Maximum words per sentence before splitting
     MAX_WORDS_RANDOMNESS = 5  # Randomness for max words threshold (±5)
+    LONG_WORD_THRESHOLD = 8  # Words longer than this may be split if unusual
+    UNUSUAL_WORD_FREQ_THRESHOLD = 10  # Words appearing less than this are "unusual"
     
     def __init__(self):
         # Fix SSL certificate verification issues on macOS
@@ -372,28 +374,34 @@ class AdvancedSpecialLetterGenerator:
             avg_chunk_size = self.AVG_CHUNK_SIZE
         sequence_length = len(special_sequence)
         num_chunks = max(2, round(sequence_length / avg_chunk_size))
-        
+
         chunks = []
         current_pos = 0
-        
+
         for chunk_idx in range(num_chunks):
             remaining = sequence_length - current_pos
             remaining_chunks = num_chunks - chunk_idx
-            
+
+            # Last chunk gets all remaining characters
+            if remaining_chunks == 1:
+                chunk = special_sequence[current_pos:]
+                chunks.append(chunk)
+                break
+
             # Target length with randomness (controlled by CHUNK_RANDOMNESS)
             target_length = remaining // remaining_chunks
             min_length = max(4, int(target_length * self.CHUNK_RANDOMNESS))
             max_length = min(remaining, int(target_length * (2 - self.CHUNK_RANDOMNESS)))
-            
+
             if min_length > max_length:
                 min_length = max_length
-            
+
             # Randomly choose length in range
             chunk_length = random.randint(min_length, max_length)
             chunk = special_sequence[current_pos:current_pos + chunk_length]
             chunks.append(chunk)
             current_pos += chunk_length
-        
+
         return chunks
     
     def _generate_single_sentence(self, special_sequence: str, max_results: int = 10) -> List[str]:
@@ -510,19 +518,44 @@ class AdvancedSpecialLetterGenerator:
     def _build_phrase_from_assignment(self, assignment: List[str], rule: List[str]) -> Optional[str]:
         """Build a phrase from pattern assignment and POS rule."""
         words = []
-        
+
         for i, (pattern, pos) in enumerate(zip(assignment, rule)):
             # Handle comma as literal punctuation
             if pos == ',':
+                # Commas should not have any pattern assigned
+                if pattern:
+                    # Invalid assignment - letters assigned to punctuation
+                    return None
                 # Attach comma to previous word without space
                 if words:
                     words[-1] += ','
                 continue
-                
+
             if pattern:  # Has special letters
                 word_options = self._get_words_for_pattern_and_pos(pattern, pos)
                 if word_options:
-                    words.append(self._weighted_word_choice(word_options))
+                    chosen_word = self._weighted_word_choice(word_options)
+
+                    # CRITICAL: Verify the chosen word actually matches the pattern
+                    actual_pattern = self._extract_special_pattern(chosen_word)
+                    if actual_pattern != pattern:
+                        # Pattern mismatch - this should never happen but let's be safe
+                        return None
+
+                    # Check if word is long and unusual - try to split it
+                    if len(chosen_word) > self.LONG_WORD_THRESHOLD:
+                        word_freq = self.word_freq.get(chosen_word, 0)
+                        if word_freq < self.UNUSUAL_WORD_FREQ_THRESHOLD:
+                            # Try to split the pattern into two shorter words
+                            split_words = self._try_split_pattern(pattern, pos)
+                            if split_words:
+                                # Verify split words maintain the pattern
+                                split_pattern = ''.join(self._extract_special_pattern(w) for w in split_words)
+                                if split_pattern == pattern:
+                                    words.extend(split_words)
+                                    continue
+
+                    words.append(chosen_word)
                 else:
                     return None
             else:  # No special letters, use function word
@@ -531,8 +564,68 @@ class AdvancedSpecialLetterGenerator:
                     words.append(function_word)
                 else:
                     return None
-        
+
         return ' '.join(words) if words else None
+    
+    def _try_split_pattern(self, pattern: str, pos: str) -> Optional[List[str]]:
+        """Try to split a long pattern into two shorter, more common words."""
+        if len(pattern) < 4:  # Too short to split meaningfully
+            return None
+
+        # Try different split points (favor middle splits)
+        best_split = None
+        best_score = 0
+
+        for split_point in range(2, len(pattern) - 1):
+            pattern1 = pattern[:split_point]
+            pattern2 = pattern[split_point:]
+
+            # Get word options for each part
+            words1 = self._get_words_for_pattern_and_pos(pattern1, pos)
+            words2 = self._get_words_for_pattern_and_pos(pattern2, pos)
+
+            if words1 and words2:
+                # Pick most common words from each list
+                word1 = self._get_most_common_word(words1)
+                word2 = self._get_most_common_word(words2)
+
+                if word1 and word2:
+                    # CRITICAL: Verify that the combined patterns match the original
+                    combined_pattern = self._extract_special_pattern(word1) + self._extract_special_pattern(word2)
+                    if combined_pattern != pattern:
+                        continue  # Skip this split - it doesn't preserve the pattern
+
+                    # Score based on combined frequency and reasonable length
+                    freq1 = self.word_freq.get(word1, 0)
+                    freq2 = self.word_freq.get(word2, 0)
+                    score = freq1 + freq2
+
+                    # Prefer splits where both words are common
+                    if freq1 > self.UNUSUAL_WORD_FREQ_THRESHOLD and freq2 > self.UNUSUAL_WORD_FREQ_THRESHOLD:
+                        score *= 2  # Bonus for both being common
+
+                    if score > best_score:
+                        best_score = score
+                        best_split = [word1, word2]
+
+        return best_split
+    
+    def _get_most_common_word(self, words: List[str]) -> Optional[str]:
+        """Get the most common word from a list based on frequency."""
+        if not words:
+            return None
+        
+        # Find word with highest frequency
+        best_word = None
+        best_freq = 0
+        
+        for word in words:
+            freq = self.word_freq.get(word, 0)
+            if freq > best_freq:
+                best_freq = freq
+                best_word = word
+        
+        return best_word if best_word else words[0]
     
     def _build_phrase_with_function_words(self, partial_assignment: List[str], 
                                          rule: List[str], start_pos: int) -> Optional[str]:
@@ -596,40 +689,3 @@ class AdvancedSpecialLetterGenerator:
             return random.choice(function_words[pos])
         return None
 
-# Example usage
-def main():
-    try:
-        print("Initializing Advanced Special Letter Generator...")
-        generator = AdvancedSpecialLetterGenerator()
-        
-        # Test cases
-        test_cases = ["bddg", "kt", "hpy", "ldgptyldpytttt", "fg", "plt","lgtyldglyldgplylddbhttyldgpllbtyldjktylgylgplyldghbtyldpglyldgplyldgltyldpygty"]
-        
-        print("\nAdvanced Special Letter Phrase Generator")
-        print("=" * 50)
-        print("Using NLTK word corpus with part-of-speech tagging")
-        print(f"Loaded {len(generator.valid_words)} valid words")
-        print()
-        
-        for test in test_cases:
-            print(f"Input: '{test}'")
-            
-            # Generate grammatical phrases
-            print("  Grammatical phrases:")
-            try:
-                grammatical_phrases = generator.generate_grammatical_phrases(test, max_results=3)
-                for i, phrase in enumerate(grammatical_phrases, 1):
-                    print(f"    {i}. {phrase}")
-                if not grammatical_phrases:
-                    print("    (none found)")
-            except Exception as e:
-                print(f"    Error generating grammatical phrases: {e}")
-                        
-            print()
-            
-    except Exception as e:
-        print(f"Error initializing generator: {e}")
-        print("Make sure you have installed NLTK: pip install nltk")
-
-if __name__ == "__main__":
-    main()
