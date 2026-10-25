@@ -44,6 +44,23 @@ class TestAdvancedSpecialLetterGenerator(unittest.TestCase):
                         f"Expected: '{test_input}', Got: '{output_special}' in phrase '{phrase}'"
                     )
 
+    def test_ldgptyldpytttt(self):
+        """Test that the special letters in output match exactly for 'ldgptyldpytttt'."""
+        test_input = "ldgptyldpytttt"
+        phrases = self.generator.generate_grammatical_phrases(test_input, max_results=3)
+
+        self.assertGreater(len(phrases), 0, f"No phrases generated for input '{test_input}'")
+
+        for phrase in phrases:
+            output_special = self.extract_special_letters(phrase, self.generator.special_letters)
+
+            self.assertEqual(
+                output_special,
+                test_input,
+                f"Special letters mismatch for input '{test_input}'. "
+                f"Expected: '{test_input}', Got: '{output_special}' in phrase '{phrase}'"
+            )
+
     def test_no_extra_special_letters(self):
         """Test that no special letters appear that weren't in the input."""
         test_cases = [

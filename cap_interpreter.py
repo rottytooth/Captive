@@ -46,7 +46,10 @@ class lexer:
         "y": "end"
     }
 
-    MAX_CHR = 1114112 # max unicode chr() can handle
+    # MAX_CHR = 1114112 # max unicode chr() can handle
+    MAX_CHR = 127 # first half of ascii
+
+    MAX_REPETITIVE_ADDITIONS = 11
 
     def lex_number(self, input_txt, idx):
         subtract = False
@@ -123,43 +126,59 @@ class interpreter:
         cmd_stack = []
 
         retset = self.parse_nodes(nodes, idx, stack, cmd_stack, verbose=verbose)
-        return retset[3], stack
+        # use the returned stack, since rot replaces the list rather than mutating it
+        return retset[3], retset[1]
 
-    def parse_nodes(self, nodes, idx, stack, cmd_stack, output = "", verbose=False,stack_cache=[]):
+    def parse_nodes(self, nodes, idx, stack, cmd_stack, output = "", verbose=False, stack_cache=None):
 
         starting_idx = idx
+        if stack_cache is None:
+            stack_cache = []
 
         while idx < len(nodes):
 
             n = nodes[idx]
-            
+
             if len(cmd_stack) > 0 and cmd_stack[-1] == "skip":
                 if n == "end":
                     cmd_stack.pop()
-                else:
-                    pass
-                    # what happens here is we skip all the elifs below until the end is reached
+                elif n == "if" or n == "while":
+                    # nested blocks inside a skipped block are skipped too, so each needs its own end
+                    cmd_stack.append("skip")
+                # what happens here is we skip all the elifs below until the end is reached
             elif n == "end":
                 # at the end of an if, we'll always pop
                 if len(cmd_stack) > 0 and cmd_stack[-1] == "if":
                     cmd_stack.pop()
                 # for while, we have to test the top item
-                if len(cmd_stack) > 0 and cmd_stack[-1] == "while":
+                elif len(cmd_stack) > 0 and cmd_stack[-1] == "while":
 
-                    if stack in stack_cache:
-                        # if the stack is in exactly the same state as a previous iteration, we consider it an infinite loop and exit
+                    n = lexer.MAX_REPETITIVE_ADDITIONS
+                    n2 = n * 2
+                    recent_n = stack_cache[-n:] if len(stack_cache) >= n else []
+                    recent_n2 = stack_cache[-n2:] if len(stack_cache) >= n2 else []
+                    repetitive = len(recent_n) == n and all(s == recent_n[-1] for s in recent_n)
+                    alternating = (
+                        len(recent_n2) == n2
+                        and len(set(tuple(s) for s in recent_n2[0::2])) == 1
+                        and len(set(tuple(s) for s in recent_n2[1::2])) == 1
+                        and recent_n2[0] != recent_n2[1]
+                    )
+
+                    if stack in stack_cache or repetitive or alternating:
+                        # infinite loop detected: exact repeat, same state appended repeatedly, or two-state oscillation
                         cmd_stack.pop()
                         return idx, stack, cmd_stack, output
                     else:
-                        if verbose:
-                            # show the comparison between the two
-                            for old_stack in stack_cache:
-                                if len(old_stack) != len(stack):
-                                    print(f"cached stack len: {len(old_stack)}, curr stack length: {len(stack)}")
-                                else:
-                                    #FIXME: rework to avoid this conversion
-                                    print(np.subtract(np.asarray(old_stack), np.asarray(stack)))
-                        if len(stack_cache)> 50 * 1000: # avoid memory error by resetting ache regularly
+                        # if verbose:
+                        #     # show the comparison between the two
+                        #     for old_stack in stack_cache:
+                        #         if len(old_stack) != len(stack):
+                        #             print(f"cached stack len: {len(old_stack)}, curr stack length: {len(stack)}")
+                        #         else:
+                        #             #FIXME: rework to avoid this conversion
+                        #             print(np.subtract(np.asarray(old_stack), np.asarray(stack)))
+                        if len(stack_cache)> 50 * 1000: # avoid memory error by resetting cache regularly
                             stack_cache = [stack_cache[-1]]
                         stack_cache.append(stack.copy())
 
@@ -191,11 +210,12 @@ class interpreter:
             elif n == "not":
                 if len(stack) > 0:
                     if stack[-1] == 0:
-                        stack[-1] == 1
+                        stack[-1] = 1
                     else:
                         stack[-1] = 0 - stack[-1]
             elif n == "if":
-                if stack[-1] > 0:
+                # an empty stack is treated as false
+                if len(stack) > 0 and stack[-1] > 0:
                     cmd_stack.append("if")
                 else:
                     cmd_stack.append("skip")
@@ -230,14 +250,14 @@ class interpreter:
                 if len(stack) > 1:
                     stack.append(int(stack.pop() == stack.pop()))
             elif n == "while":
-                if stack[-1] > 0:
+                # an empty stack is treated as false
+                if len(stack) > 0 and stack[-1] > 0:
                     cmd_stack.append("while")
 
-                    # infinite loop handling
-                    stack_cache.clear()
-                    stack_cache.append(stack.copy())
+                    # infinite loop handling: each loop tracks its own history, so nested loops don't clobber each other
+                    loop_cache = [stack.copy()]
 
-                    idx, stack, cmd_stack, output = self.parse_nodes(nodes, idx + 1, stack, cmd_stack, output=output, verbose=verbose, stack_cache=stack_cache)
+                    idx, stack, cmd_stack, output = self.parse_nodes(nodes, idx + 1, stack, cmd_stack, output=output, verbose=verbose, stack_cache=loop_cache)
                 else:
                     cmd_stack.append("skip")
 
