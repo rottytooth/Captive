@@ -1,7 +1,6 @@
 from argparse import ArgumentParser
 import os
 import re
-import numpy as np
 
 class lexer:
 

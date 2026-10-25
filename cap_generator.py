@@ -1,12 +1,9 @@
 import nltk
 from nltk.corpus import wordnet, brown
-from nltk.tokenize import word_tokenize
 from nltk.tag import pos_tag
 from nltk.probability import FreqDist
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Optional
 import random
-import urllib.request
-import os
 import ssl
 
 class AdvancedSpecialLetterGenerator:
