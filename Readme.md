@@ -93,7 +93,6 @@ Version 0.2 is a re-working of several commands to make it more natural to Engli
 |over|none|`dt`|
 |rot|`pp` or `dp`, then a number|`pp` (rot 1), `dp` (rot −1), or `pg` then a number|
 |pop|`pk`, then a number|`pl`, then a number|
-|sub|`f`, though the interpreter ignored it|`f`|
 
 The number letters were revalued as well: in 0.1 they were d 64, g 32, j 24, h 16, p 8, l 4, t 1, and in 0.2 they are d 64, h 32, l 16, p 8, g 4, j 2, t 1.
 
