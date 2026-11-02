@@ -4,24 +4,29 @@ import re
 
 class lexer:
 
+
     COMMANDS = {
         "l": "push",
+        "t": {
+            "h": "swap",
+            "": "emit"
+        },
         "p": {
-            "k": "pop",
             "h": "not",
             "t": "if",
             "d": "end",
-            "p": "rot"
+            "p": ("rot", 1),
+            "l": "pop",
+            "g": "rot"
         },
-        "t": "emit",
-        "f": "sub",
-        "b": "mul",
         "d": {
             "d": "add",
             "g": "gt",
-            "p": "rot"
-            # "k": "exec"
+            "p": ("rot", -1),
+            "t": "over"
         },
+        "f": "sub",
+        "b": "mul",
         "k": "div",
         "q": "mod",
         "g": "while",
@@ -30,20 +35,24 @@ class lexer:
         "y": "end"
     }
 
+    # A number's letters each add their value, a binary place, so every number to 127 has one spelling with
+    # each letter used at most once; q, k, f and b subtract the value after them instead
     NUMBERS = {
         "q": "-",
         "k": "-",
         "f": "-",
         "b": "-",
         "d": 64,
-        "g": 32,
-        "j": 24,
-        "h": 16,
+        "h": 32,
+        "l": 16,
         "p": 8,
-        "l": 4,
+        "g": 4,
+        "j": 2,
         "t": 1,
         "y": "end"
     }
+
+    TAKES_NUMBER = {"push", "pop", "rot"}
 
     # MAX_CHR = 1114112 # max unicode chr() can handle
     MAX_CHR = 127 # first half of ascii
@@ -72,45 +81,40 @@ class lexer:
         return curr_number, idx
 
     def strip_non_commands(self, input_txt):
-        return re.sub("[^bdghjklpqty]", "", input_txt)
+        return re.sub("[^bdfghjklpqty]", "", input_txt)
     
     def lex(self, input_txt):
         command_text = self.strip_non_commands(input_txt)
 
         program = []
         idx = 0
-        first = None
 
         while idx < len(command_text):
-            c = command_text[idx]
+            cmd = lexer.COMMANDS[command_text[idx]]
+            idx += 1
 
-            if first:
-                if c in first:
-                    cmd = first[c]
-                    program.append(cmd)
+            if isinstance(cmd, dict):
+                # the longest command wins: a pair if the next letter completes one, otherwise the letter on its
+                # own, if it means anything
+                if idx < len(command_text) and command_text[idx] in cmd:
+                    cmd = cmd[command_text[idx]]
                     idx += 1
-                    first = None
+                else:
+                    cmd = cmd.get("")
+                    if not cmd:
+                        continue
 
-                    if cmd == "rot" or cmd == "pop":
-                        number, idx = self.lex_number(command_text, idx+1)
-                        program.append(number)
-                    continue
-                # if the second letter is incompatible with the first, the first is ignored and the second is treated as its own command
-                first = None
-
-            cmd = lexer.COMMANDS[c]
-
-            if not isinstance(cmd, str):
-                # load the possibilities, to determine in next iteration
-                first = cmd
+            if isinstance(cmd, tuple):
+                # a command with its number built in
+                program.extend(cmd)
             else:
                 program.append(cmd)
+                if cmd in lexer.TAKES_NUMBER:
+                    # the number starts here; then skip its closing y
+                    number, idx = self.lex_number(command_text, idx)
+                    program.append(number)
+                    idx += 1
 
-            if cmd == "push":
-                number, idx = self.lex_number(command_text, idx+1)
-                program.append(number)
-            idx += 1
-        
         return program
 
 
@@ -206,6 +210,12 @@ class interpreter:
             elif n == "dup":
                 if len(stack) > 0:
                     stack.append(stack[-1])
+            elif n == "swap":
+                if len(stack) > 1:
+                    stack[-1], stack[-2] = stack[-2], stack[-1]
+            elif n == "over":
+                if len(stack) > 1:
+                    stack.append(stack[-2])
             elif n == "not":
                 if len(stack) > 0:
                     if stack[-1] == 0:
@@ -242,6 +252,14 @@ class interpreter:
                         stack.append(0)
                     else:
                         stack.append(num / den)
+            elif n == "mod":
+                if len(stack) > 1:
+                    num = stack.pop()
+                    den = stack.pop()
+                    if den == 0:
+                        stack.append(0)
+                    else:
+                        stack.append(num % den)
             elif n == "gt":
                 if len(stack) > 1:
                     stack.append(int(stack.pop() > stack.pop()))
@@ -302,7 +320,7 @@ class interpreter:
 
 if __name__ == "__main__":
 
-    parser = ArgumentParser(description='Captive Interpreter 0.1', 
+    parser = ArgumentParser(description='Captive Interpreter 0.2', 
                             epilog='More at https://danieltemkin.com/Esolangs/Captive')
 
     parser.add_argument('progfile', metavar='progfile', type=str, 

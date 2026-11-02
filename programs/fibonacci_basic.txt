@@ -1,0 +1,46 @@
+FIBONACCI: PRINTS THE FIRST 24 FIBONACCI NUMBERS, SEPARATED BY COMMAS.
+ONLY LOWER-CASE LETTERS ARE COMMANDS, SO THESE NOTES IN CAPITALS ARE IGNORED.
+
+THE STACK HOLDS X, Y AND A COUNT OF ROUNDS. EACH ROUND SENDS THE COUNT TO THE
+BOTTOM (ROT 1) SO X AND Y ARE ON TOP, ADDS Y TO X (SWAP, OVER, ADD) AND PRINTS X,
+THEN ADDS X TO Y THE SAME WAY AND PRINTS Y, AND BRINGS THE COUNT BACK UP (ROT -1).
+
+TO PRINT A NUMBER: PUT A 0 AT THE BOTTOM, THEN WHILE THE NUMBER IS ABOVE 0, TAKE
+ITS LAST DIGIT (MOD 10), SEND THE DIGIT'S CHARACTER (DIGIT + 48) TO THE BOTTOM,
+AND DIVIDE WHAT'S LEFT BY 10. THEN BRING THE CHARACTERS BACK UP ONE BY ONE AND
+EMIT THEM, MOST SIGNIFICANT FIRST, UNTIL THE 0 COMES BACK UP.
+
+lty ly lgpy                           PUSH X = 1, Y = 0, COUNT = 12
+g                                     WHILE COUNT > 0
+  pp                                  PUT THE COUNT AT THE BOTTOM, UNDER X AND Y
+  th dt dd                            X = X + Y, ON TOP OF Y
+  h                                   COPY X TO THE TOP
+    ly pp                             PRINT IT: A 0 AT THE BOTTOM
+    g                                 WHILE N > 0
+      h lptty th q                    ITS LAST DIGIT, N MOD 10
+      h lllly dd pp                   THE DIGIT'S CHARACTER, TO THE BOTTOM
+      th f                            N - DIGIT
+      lptty th k                      DIVIDED BY 10
+    y                                 END
+    plfty                             DROP THE 0 THAT N HAS BECOME
+    dp                                BRING UP THE FIRST CHARACTER
+    g t dp y                          EMIT CHARACTERS UNTIL THE 0 COMES UP
+    plfty                             DROP THE 0
+  lghpy t llly t                      PRINT ", "
+  th dt dd                            Y = Y + X, ON TOP OF X
+  h                                   COPY Y TO THE TOP
+    ly pp                             PRINT IT: A 0 AT THE BOTTOM
+    g                                 WHILE N > 0
+      h lptty th q                    ITS LAST DIGIT, N MOD 10
+      h lllly dd pp                   THE DIGIT'S CHARACTER, TO THE BOTTOM
+      th f                            N - DIGIT
+      lptty th k                      DIVIDED BY 10
+    y                                 END
+    plfty                             DROP THE 0 THAT N HAS BECOME
+    dp                                BRING UP THE FIRST CHARACTER
+    g t dp y                          EMIT CHARACTERS UNTIL THE 0 COMES UP
+    plfty                             DROP THE 0
+  dp                                  BRING UP THE COUNT
+  lfty dd                             COUNT = COUNT - 1
+  pt lghpy t llly t y                 IF ANY ROUNDS ARE LEFT, PRINT ", "
+y                                     END
